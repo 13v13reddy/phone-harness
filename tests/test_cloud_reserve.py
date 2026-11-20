@@ -856,7 +856,8 @@ class Shapes(unittest.TestCase):
 
     def test_an_expired_link_says_to_reserve_again(self):
         row = {**reservation(1), "expires_at": time.time() - 60}
-        self.assertEqual(cloud._pay_rows(row)[1], ("", "the link has expired; reserve again"))
+        self.assertEqual(cloud._pay_rows(row), [
+            ("pay", row["checkout_url"]), ("", "the link has expired; if it no longer opens, reserve again")])
         self.assertIn("no payment link yet", cloud._pay_rows({**row, "checkout_url": None})[0][1])
 
 

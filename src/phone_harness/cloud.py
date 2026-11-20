@@ -1960,8 +1960,9 @@ def _pay_rows(reservation):
     rows = [("pay", url)]
     if reservation.get("expires_at"):
         left = _in(reservation["expires_at"])
-        rows.append(("", "the link has expired; reserve again" if left == "expired"
-                     else f"the link works for another {left}"))
+        # By this machine's clock, which may be wrong: say so, and leave the link in view.
+        rows.append(("", "the link has expired; if it no longer opens, reserve again"
+                     if left == "expired" else f"the link works for another {left}"))
     return rows
 
 
