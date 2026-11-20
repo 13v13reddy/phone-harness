@@ -109,7 +109,9 @@ class FakeApi(BaseHTTPRequestHandler):
     requests = []             # (method, path, headers with lowercase names, body)
     fail = None               # (status, body, headers): the next request answers this instead
     drop = 0                  # the next N creates are made, and then never answered
-    name_on_file = True       # False: the account has no name, so the body has to give one
+    live = True               # False: an API from before reservations; every route under it is a 404
+    account_name = "Ada King"  # the name on file; None for an account that has none
+    names = {}                # reservation_id -> [first, last] as the API would store them
     checkout = None           # set: every new reservation's checkout_url is this instead
 
     def log_message(self, *a):
@@ -137,7 +139,7 @@ class FakeApi(BaseHTTPRequestHandler):
             (status, payload, headers), c.fail = c.fail, None
             return self._send(status, payload, headers)
         parts = path.strip("/").split("/")
-        if parts[0] != "reservations":
+        if parts[0] != "reservations" or not c.live:
             return self._send(404, {"error": f"no route {method} {path}"})
         if len(parts) == 1 and method == "POST":
             return self._create(body or {})
@@ -161,10 +163,6 @@ class FakeApi(BaseHTTPRequestHandler):
             return self._send(400, {"error": "Choose a phone: iphone, iphone_esim, android"})
         if type(body.get("quantity")) is not int or not 1 <= body["quantity"] <= 50:
             return self._send(400, {"error": "Choose between 1 and 50 phones"})
-        if not c.name_on_file and not body.get("first_name"):
-            return self._send(400, {"error": "A first name is required"})
-        if not c.name_on_file and not body.get("last_name"):
-            return self._send(400, {"error": "A last name is required"})
         if key in c.keys:
             sent, made = c.keys[key]
             if sent != body:
@@ -176,6 +174,11 @@ class FakeApi(BaseHTTPRequestHandler):
             if c.checkout:
                 row["checkout_url"] = c.checkout
             c.rows[row["reservation_id"]] = row
+            # A signed-in account need not say who it is: a name in the body is
+            # used, else the one on file, else none at all.
+            first, _, last = (c.account_name or "").partition(" ")
+            c.names[row["reservation_id"]] = [body.get("first_name") or first or None,
+                                              body.get("last_name") or last or None]
             if key:
                 c.keys[key] = (body, row["reservation_id"])
             status = 201
@@ -216,7 +219,8 @@ class ReserveCase(unittest.TestCase):
         self.home = tempfile.TemporaryDirectory()
         self.addCleanup(self.home.cleanup)
         FakeApi.valid, FakeApi.rows, FakeApi.keys, FakeApi.requests = {KEY}, {}, {}, []
-        FakeApi.fail, FakeApi.drop, FakeApi.name_on_file, FakeApi.checkout = None, 0, True, None
+        FakeApi.fail, FakeApi.drop, FakeApi.checkout = None, 0, None
+        FakeApi.account_name, FakeApi.names, FakeApi.live = "Ada King", {}, True
         self.server = ThreadingHTTPServer(("127.0.0.1", 0), FakeApi)
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
@@ -388,18 +392,29 @@ class Reserve(ReserveCase):
                 self.assertNotIn("opened in your browser", r.stdout)
         self.assertEqual(browser_recorder.recorder.urls(), [])
 
-    def test_a_name_is_sent_when_given_and_asked_for_when_the_account_has_none(self):
-        FakeApi.name_on_file = False
-        bare = self.reserve()
-        self.assertEqual(bare.returncode, 1)
-        self.assertIn("A first name is required", bare.stderr)
-        self.assertIn("--first-name NAME --last-name NAME", bare.stderr)
-        self.assertEqual(FakeApi.rows, {})
+    def test_a_name_is_optional_and_overrides_the_accounts_when_given(self):
+        plain = self.reserve()                                  # nothing said: the account's name
+        self.assertEqual(plain.returncode, 0, plain.stderr)
+        self.assertEqual(FakeApi.requests[-1][3], {"phone_type": "iphone", "plan": "monthly", "quantity": 1,
+                                                   "use_case": USE_CASE})
+        self.assertEqual(FakeApi.names[rid(1)], ["Ada", "King"])
         named = self.reserve("--first-name", " Dana ", "--last-name", "Okafor")
         self.assertEqual(named.returncode, 0, named.stderr)
         self.assertEqual(FakeApi.requests[-1][3], {
             "phone_type": "iphone", "plan": "monthly", "quantity": 1, "use_case": USE_CASE,
             "first_name": "Dana", "last_name": "Okafor"})
+        self.assertEqual(FakeApi.names[rid(2)], ["Dana", "Okafor"])
+        half = self.reserve("--last-name=Lovelace", "--first-name", "  ")     # one of the two; a blank is not sent
+        self.assertEqual(half.returncode, 0, half.stderr)
+        self.assertEqual(FakeApi.requests[-1][3], {
+            "phone_type": "iphone", "plan": "monthly", "quantity": 1, "use_case": USE_CASE,
+            "last_name": "Lovelace"})
+        self.assertEqual(FakeApi.names[rid(3)], ["Ada", "Lovelace"])
+        FakeApi.account_name = None                             # no name on file, and none is needed
+        bare = self.reserve()
+        self.assertEqual(bare.returncode, 0, bare.stderr)
+        self.assertIn(f"Reservation {rid(4)} started", bare.stdout)
+        self.assertEqual(FakeApi.names[rid(4)], [None, None])
         for request in FakeApi.requests:
             self.assertNotIn("email", request[3])              # the account's address is the API's to fill in
 
@@ -453,7 +468,9 @@ class ReserveErrors(ReserveCase):
              ["That phone and plan cannot be reserved yet.", "another --type or --plan"]),
             ((429, {"error": "Too many unfinished reservations. Finish one, or try again in an hour.",
                     "code": "rate_limited", "retry_after_seconds": 3600}, {"Retry-After": "3600"}),
-             ["Too many unfinished reservations", "phone-harness cloud reservations"]),
+             ["Too many unfinished reservations", "Cancelling one does not free a place; paying for one does.",
+              "phone-harness cloud reservations"]),
+            ((400, {"error": "A first name is too long"}, None), ["A first name is too long"]),
             ((400, {"error": "Choose between 1 and 50 phones"}, None), ["Choose between 1 and 50 phones"]),
             ((403, {"error": "this sign-in can drive phones, not manage the account; use the dashboard "
                              "or an API key", "code": "scope_limited"}, None), ["use the dashboard or an API key"]),
@@ -474,17 +491,36 @@ class ReserveErrors(ReserveCase):
                 self.assertEqual(r.stdout, "")
         self.assertEqual(FakeApi.rows, {})
 
-    def test_an_api_from_before_reservations_says_so(self):
-        """Signed in, an unknown route is a 404. That is not "no such reservation"."""
-        FakeApi.fail = (404, {"error": "no route POST /reservations"}, None)
-        made = self.reserve()
-        FakeApi.fail = (404, {"error": "no route GET /reservations"}, None)
-        listed = self.run_cli("reservations")
-        for r in (made, listed):
-            self.assertEqual(r.returncode, 1, r.stdout)
-            self.assertIn(f"{self.api} does not take reservations yet", r.stderr)
-            self.assertNotIn("No reservation", r.stderr)
-            self.assertNotIn("No such", r.stderr)
+    def test_an_api_from_before_reservations_says_so_from_every_command(self):
+        """Signed in, a path the API does not have is a 404. Until reservations are live that is all
+        of them, and "no reservation of yours has that id" would be the wrong thing to say."""
+        FakeApi.live = False
+        for args in (["reserve", "--type", "iphone", "--plan", "monthly", "--use-case", USE_CASE],
+                     ["reservations"], ["reservations", "--json"], ["reservations", rid(1)],
+                     ["reservations", "rsv_0000"], ["reservations", "cancel", rid(1)],
+                     ["reservations", "cancel", rid(1), "--yes"]):
+            with self.subTest(args=args[:3]):
+                r = self.run_cli(*args)
+                self.assertEqual(r.returncode, 1, r.stdout)
+                self.assertIn(f"{self.api} does not take reservations yet", r.stderr)
+                self.assertIn("Nothing was changed.", r.stderr)
+                for wrong in ("No reservation", "no route", "404", "matches 0", "Traceback"):
+                    self.assertNotIn(wrong, r.stderr)
+                self.assertEqual(r.stdout, "")
+        self.assertEqual(self.sent("POST", "/cancel"), [])            # the read came first and said enough
+
+    def test_a_404_for_one_id_on_an_api_that_has_reservations_is_that_id(self):
+        self.hold(reservation(1, status="queued", position=1, paid_days_ago=1))
+        unknown = self.run_cli("reservations", rid(9))
+        self.assertIn(f"No reservation {rid(9)} on this account", unknown.stderr)
+        self.assertEqual(len(FakeApi.requests), 1)             # the API's own "No such reservation" needs no second look
+        FakeApi.fail = (404, {"error": "no route GET /reservations/" + rid(9)}, None)     # a 404 in other words
+        odd = self.run_cli("reservations", rid(9))
+        self.assertEqual(odd.returncode, 1)
+        self.assertIn(f"No reservation {rid(9)} on this account", odd.stderr)
+        self.assertNotIn("does not take reservations yet", odd.stderr)
+        self.assertEqual([req[:2] for req in FakeApi.requests[1:]],
+                         [("GET", "/reservations/" + rid(9)), ("GET", "/reservations")])
 
     def test_a_stripe_outage_says_how_to_retry_the_same_reservation(self):
         FakeApi.fail = (502, {"error": "Stripe could not complete this request; try again shortly.",
@@ -761,6 +797,86 @@ class Cancel(ReserveCase):
         self.assertEqual(r.returncode, 1)
         self.assertIn(f"No reservation {rid(42)} on this account", r.stderr)
         self.assertEqual(self.sent("POST"), [])
+
+
+class NotFound(BaseHTTPRequestHandler):
+    """A stub of an API from before reservations: every request is a 404."""
+    # What that 404 can look like. The first is phone-cloud's own (a signed-in
+    # request for a path it does not have); the rest are what a proxy or an
+    # older server in front of it might say instead.
+    KINDS = {
+        "the API's own": (b'{"error": "no route %s %s"}', "application/json"),
+        "a page": (b"<html><body><h1>404 Not Found</h1></body></html>", "text/html"),
+        "nothing": (b"", "text/plain"),
+        "other JSON": (b'{"detail": "Not Found"}', "application/json"),
+    }
+    kind = "the API's own"
+    seen = []
+
+    def log_message(self, *a):
+        pass
+
+    def _answer(self):
+        n = int(self.headers.get("Content-Length") or 0)
+        if n:
+            self.rfile.read(n)
+        NotFound.seen.append((self.command, self.path))
+        body, content_type = NotFound.KINDS[NotFound.kind]
+        raw = body % (self.command.encode(), self.path.encode()) if b"%s" in body else body
+        self.send_response(404)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(raw)))
+        self.end_headers()
+        self.wfile.write(raw)
+
+    do_GET = do_POST = do_DELETE = _answer
+
+
+class NoReservationsYet(ReserveCase):
+    """Until reservations are live, every path under /reservations is a 404. Each command has to
+    say that, and never "no reservation of yours has that id"."""
+
+    def setUp(self):
+        super().setUp()
+        stub = ThreadingHTTPServer(("127.0.0.1", 0), NotFound)
+        threading.Thread(target=stub.serve_forever, daemon=True).start()
+        self.addCleanup(stub.server_close)
+        self.addCleanup(stub.shutdown)
+        self.stub = f"http://127.0.0.1:{stub.server_port}"
+        self.env["PHONE_HARNESS_CLOUD_API"] = self.stub
+
+    def test_every_command_says_the_api_does_not_take_reservations_yet(self):
+        said = f"{self.stub} does not take reservations yet, so a phone cannot be reserved, listed or cancelled through it. Nothing was changed."
+        commands = {
+            "reserve": (["reserve", "--type", "iphone", "--plan", "monthly", "--use-case", USE_CASE],
+                        [("POST", "/reservations")]),
+            "reserve --json --open": (["reserve", "--type", "android", "--plan", "annual", "--qty", "3",
+                                       "--use-case", USE_CASE, "--json", "--open"], [("POST", "/reservations")]),
+            "reservations": (["reservations"], [("GET", "/reservations")]),
+            "reservations --json": (["reservations", "--json"], [("GET", "/reservations")]),
+            "reservations ID": (["reservations", rid(1)],
+                                [("GET", "/reservations/" + rid(1)), ("GET", "/reservations")]),
+            "reservations PREFIX": (["reservations", "rsv_00"], [("GET", "/reservations")]),
+            "cancel ID": (["reservations", "cancel", rid(1)],
+                          [("GET", "/reservations/" + rid(1)), ("GET", "/reservations")]),
+            "cancel ID --yes": (["reservations", "cancel", rid(1), "--yes"],
+                                [("GET", "/reservations/" + rid(1)), ("GET", "/reservations")]),
+            "cancel ID --yes --json": (["reservations", "cancel", rid(1), "--yes", "--json"],
+                                       [("GET", "/reservations/" + rid(1)), ("GET", "/reservations")]),
+        }
+        for kind in NotFound.KINDS:
+            for name, (args, asked) in commands.items():
+                with self.subTest(kind=kind, command=name):
+                    NotFound.kind, NotFound.seen = kind, []
+                    r = self.run_cli(*args)
+                    self.assertEqual(r.returncode, 1, r.stdout)
+                    self.assertEqual(r.stderr.strip(), said)
+                    self.assertEqual(r.stdout, "")
+                    for wrong in ("No reservation", "on this account", "no route", "404", "Not Found"):
+                        self.assertNotIn(wrong, r.stderr)
+                    self.assertEqual(NotFound.seen, asked)       # a 404 for one id: is it the id, or the API?
+        self.assertEqual(browser_recorder.recorder.urls(), [])
+        self.assertEqual(FakeApi.requests, [])                   # nothing went anywhere else
 
 
 class AtATerminal(unittest.TestCase):

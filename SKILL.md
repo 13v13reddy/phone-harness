@@ -369,13 +369,13 @@ into notes or output.
 ## Reserving a cloud phone
 
 An account gets a cloud iPhone, or more phones, by reserving them. A
-reservation is a place in a queue, held by a refundable deposit on each
-phone. You can start one. Only the user can pay for it.
+reservation is a place in a queue, held by a $20 per phone refundable deposit.
+The quote the command prints is authoritative: tell the user the amounts in
+it. You can start a reservation. Only the user can pay for it.
 
 ```bash
 phone-harness cloud reserve --type iphone --plan monthly --qty 2 \
-    --use-case "Testing our listings app on real iPhones" \
-    --first-name Dana --last-name Okafor       # prints the quote and a Stripe Checkout link
+    --use-case "Testing our listings app on real iPhones"   # prints the quote and a Stripe Checkout link
 phone-harness cloud reservations               # id, type, plan, qty, status, position, deposit, paid
 phone-harness cloud reservations ID            # one in full; an unpaid one shows its link again
 phone-harness cloud reservations cancel ID     # says what it would refund; --yes does it
@@ -400,8 +400,9 @@ phone-harness cloud reservations cancel ID     # says what it would refund; --ye
   yet, the rest at the standard price. The plan starts when a phone is
   handed over, and the deposit comes off that first bill. The amounts come
   from the service with each quote; do not quote them from memory.
-- **A name may be needed.** When the account has none on file the command
-  says so. Ask the user, then pass `--first-name` and `--last-name`.
+- **The name is optional.** The reservation carries the account's name when
+  it has one. `--first-name` and `--last-name` put another name on it; pass
+  them only when the user gives you one.
 - **Cancel only when the user asks.** `cloud reservations cancel ID` with no
   `--yes` prints what would be given up and refunded, and changes nothing.
   Show the user that, then run it again with `--yes`. A queued reservation is
@@ -409,9 +410,10 @@ phone-harness cloud reservations cancel ID     # says what it would refund; --ye
   refused (`already_granted`): that deposit went onto the first bill.
 - **Retrying.** A `cloud reserve` that failed part way prints an
   `--idempotency-key`. Run the same command again with it to continue that
-  reservation, not start a second one. The service takes five unpaid
-  reservations an hour from one account, and one that was cancelled unpaid
-  still counts, so do not reserve to "see the price" and cancel.
+  reservation, not start a second one.
+- **Five unpaid reservations an hour for one account.** Cancelling one does
+  not free a place; paying for one does. So do not reserve to "see the price"
+  and cancel: reserve when the user means it.
 - `--json` on any of these prints the API's own answer.
 
 ## Android

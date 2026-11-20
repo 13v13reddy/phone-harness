@@ -54,18 +54,22 @@ them:
 
 ```bash
 phone-harness cloud reserve --type iphone --plan monthly --qty 2 \
-  --use-case "What the phones are for" --first-name NAME --last-name NAME
+  --use-case "What the phones are for"
 phone-harness cloud reservations              # status and place in the queue
 phone-harness cloud reservations cancel ID    # leave the queue; the deposit is refunded
 ```
 
 `--type` is `iphone`, `iphone-esim` or `android`; `--plan` is `monthly` or
-`annual`; `--qty` is 1 to 50. The command prints a quote and a Stripe Checkout
-link for a refundable deposit on each phone. The user opens the link and pays
-(`--open` opens it for them). That payment is what holds a place in the
-queue: until it is made, nothing is reserved. The plan starts when a phone is
-handed over, and the deposit comes off its first bill. `--first-name` and
-`--last-name` are needed when the account has no name on file.
+`annual`; `--qty` is 1 to 50. Reserving takes a $20 per phone refundable
+deposit. The command prints a quote, which is authoritative, and a Stripe
+Checkout link. The user opens the link and pays (`--open` opens it for them).
+That payment is what holds a place in the queue: until it is made, nothing is
+reserved. The plan starts when a phone is handed over, and the deposit comes
+off its first bill. The reservation carries the account's name;
+`--first-name` and `--last-name` put another one on it.
+
+An account can have five unpaid reservations an hour. Cancelling one does not
+free a place; paying for one does.
 
 Never pay, or fill in a payment page, for the user. Cancel a reservation only
 when they ask.

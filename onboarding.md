@@ -93,9 +93,10 @@ in the summary and move on. If yes:
   the minute.)
 - A user who wants a cloud iPhone and has none on the account (`phone-harness
   cloud ls` lists no iOS phone) reserves one: ask which phone, which plan, how
-  many, and what it is for, then `phone-harness cloud reserve ...`. It prints
-  a quote and a Stripe Checkout link for a refundable deposit. Hand them the
-  link and stop: paying is theirs, like signing up.
+  many, and what it is for, then `phone-harness cloud reserve ...`. Reserving
+  takes a $20 per phone refundable deposit. The command prints a quote, which
+  is authoritative, and a Stripe Checkout link. Hand them the link and stop:
+  paying is theirs, like signing up.
 
 ## Rules
 

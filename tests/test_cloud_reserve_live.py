@@ -302,17 +302,19 @@ class LiveReservations(unittest.TestCase):
         self.assertNotIn("checkout.stripe.com", paid.stdout)
         self.assertEqual(browser_recorder.recorder.urls(), [])
 
-    def test_an_account_with_no_name_on_file_is_asked_for_one(self):
+    def test_a_name_is_optional_and_an_override_is_used(self):
         nameless = self.local.account(None)
-        bare = self.run_cli("reserve", "--type", "iphone", "--plan", "monthly", "--use-case", USE_CASE,
-                            key=nameless)
-        self.assertEqual(bare.returncode, 1)
-        self.assertIn("--first-name NAME --last-name NAME", bare.stderr)
-        self.assertEqual(json.loads(self.run_cli("reservations", "--json", key=nameless).stdout), [])
-        made = self.reserve("--first-name", "Grace", "--last-name", "Hopper", key=nameless)
-        self.local.pay(made["reservation_id"])
-        row = self.local.queue_row(made["reservation_id"])            # what the operator reads
-        self.assertEqual((row["name"], row["use_case"]), ("Grace Hopper", USE_CASE))
+        bare = self.reserve(key=nameless)                       # no name on file and none given: still made
+        self.assertEqual(bare["status"], "pending_payment")
+        named = self.reserve("--first-name", "Grace", "--last-name", "Hopper", key=nameless)
+        mine = self.reserve()                                   # this account has "Dana Okafor" on file
+        half = self.reserve("--first-name", "Ada")              # one of the two; the other stays the account's
+        for made in (bare, named, mine, half):
+            self.local.pay(made["reservation_id"])
+        rows = [self.local.queue_row(made["reservation_id"]) for made in (bare, named, mine, half)]
+        self.assertEqual([row["name"] for row in rows],         # what the operator reads
+                         [None, "Grace Hopper", "Dana Okafor", "Ada Okafor"])
+        self.assertEqual({row["use_case"] for row in rows}, {USE_CASE})
 
     def test_one_account_cannot_read_or_cancel_anothers(self):
         made = self.reserve()

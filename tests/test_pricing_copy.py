@@ -16,7 +16,12 @@ DOCS = ("README.md", "SKILL.md", "install.md", "onboarding.md", "setup/cloud.md"
 
 RATE, GRANT, TRIAL_MINUTES = "5¢", "$5", "100"
 IPHONE = {"$80", "$100", "$768", "$960"}
-FIGURES = {RATE, GRANT, *IPHONE}
+# What reserving a phone costs up front. The service reads the amount from
+# Stripe and sends it in every quote, so the docs state it once each and say
+# the quote is what counts.
+DEPOSIT = "$20"
+RESERVING = ("README.md", "SKILL.md", "install.md", "onboarding.md", "setup/cloud.md", "setup/api.md")
+FIGURES = {RATE, GRANT, *IPHONE, DEPOSIT}
 FIGURE = re.compile(r"(?<![\w$])\$\d+(?:,\d{3})*(?:\.\d+)?|(?<![\w.])\d+(?:\.\d+)?¢")
 
 
@@ -43,6 +48,21 @@ class PricingCopy(unittest.TestCase):
             self.assertIn("flat subscription", text, name)
             self.assertNotRegex(text, r"(?i)iphone[^.|]*\b(not charged|is free)\b", name)
         self.assertLessEqual(IPHONE, set(FIGURE.findall(read("setup/cloud.md"))))
+
+    def test_the_deposit_is_per_phone_and_refundable_and_the_quote_is_what_counts(self):
+        for name in RESERVING:
+            text = read(name)
+            self.assertEqual(text.count(DEPOSIT), 1, name)                 # said once, so it changes in one place
+            self.assertIn(f"{DEPOSIT} per phone refundable deposit", text, name)
+            self.assertRegex(text, r"quote\b[^.]*\bauthoritative", name)
+        for name in set(DOCS) - set(RESERVING):
+            self.assertNotIn(DEPOSIT, read(name), name)
+
+    def test_the_limit_on_unpaid_reservations_is_stated_where_reserving_is_explained(self):
+        for name in ("README.md", "SKILL.md", "setup/cloud.md", "setup/api.md"):
+            text = read(name).lower()
+            self.assertRegex(text, r"five unpaid reservations an hour", name)
+            self.assertRegex(text, r"cancelling one does\s+not free a place", name)
 
 
 if __name__ == "__main__":

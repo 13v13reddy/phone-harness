@@ -34,14 +34,18 @@ curl -s -H "$C" -H 'Content-Type: application/json' \
   -d '{"op":"nav.home","kw":{}}' $CONTROL_URL/op      # Home Screen
 ```
 
-Reserve a phone the account does not have yet. The answer carries `quote` and
-`checkout_url`, a Stripe Checkout page where a person pays the refundable
-deposit; nothing is reserved until that is paid (`status` goes from
-`pending_payment` to `queued`). Never pay it for the user.
+Reserve a phone the account does not have yet, with a $20 per phone refundable
+deposit. The answer carries `quote`, which is authoritative, and
+`checkout_url`, a Stripe Checkout page where a person pays that deposit.
+Nothing is reserved until it is paid (`status` goes from `pending_payment` to
+`queued`). Never pay it for the user. An account can have five unpaid
+reservations an hour, and cancelling one does not free a place.
+`first_name` and `last_name` may be added to put a name other than the
+account's on it.
 
 ```bash
 curl -s -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $(uuidgen)" \
-  -d '{"phone_type":"iphone","plan":"monthly","quantity":1,"use_case":"What it is for","first_name":"NAME","last_name":"NAME"}' \
+  -d '{"phone_type":"iphone","plan":"monthly","quantity":1,"use_case":"What it is for"}' \
   $API/reservations                               # phone_type: iphone | iphone_esim | android
 curl -s -H "$AUTH" $API/reservations              # the account's reservations
 curl -s -H "$AUTH" $API/reservations/ID           # one: status, position, deposit

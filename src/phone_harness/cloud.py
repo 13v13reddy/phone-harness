@@ -1772,6 +1772,9 @@ RESERVE_TIMEOUT = 75               # the API talks to Stripe before it answers
 # The only place the API sends anyone to pay.
 CHECKOUT_HOST = "checkout.stripe.com"
 _RESERVATION_ID = re.compile(r"rsv_[a-f0-9]{24}")
+# What the API says of an id that names none of the account's reservations. Any
+# other 404 may be an API with no reservation routes; see _reservations_live.
+_NO_SUCH_RESERVATION = "No such reservation"
 _IDEMPOTENCY_KEY = re.compile(r"[A-Za-z0-9_-]{16,128}")
 _TYPE_WORDS = {"iphone": "iphone", "iphone_esim": "iphone-esim", "android": "android"}
 _TYPE_LABELS = {"iphone": "iPhone", "iphone_esim": "iPhone with eSIM", "android": "Android"}
@@ -1779,7 +1782,7 @@ _TIER_WORDS = {"intro": "intro price, once per customer", "standard": "standard 
 
 RESERVE_USAGE = (
     "Usage: phone-harness cloud reserve --type iphone|iphone-esim|android --plan monthly|annual\n"
-    "         [--qty N] --use-case TEXT [--first-name NAME --last-name NAME]\n"
+    "         [--qty N] --use-case TEXT [--first-name NAME] [--last-name NAME]\n"
     "         [--open] [--json] [--idempotency-key KEY]")
 RESERVATIONS_USAGE = (
     "Usage: phone-harness cloud reservations [ID] [--json]\n"
@@ -2006,18 +2009,20 @@ def _explain_reservation(e, rid=None, retry=None):
     if e.status == 401 or e.code == "account_blocked":
         return _explain(e)
     said = str(e)
-    if e.status == 404 and rid:
+    if e.status == 404 and rid and (said == _NO_SUCH_RESERVATION or _reservations_live()):
         return f"No reservation {rid} on this account. `phone-harness cloud reservations` lists them."
     if e.status == 404:
-        # No id was named, so it is the route that is missing: an API from before reservations.
-        return f"{_target('API')} does not take reservations yet, so a phone cannot be reserved through it."
+        # The route itself is missing: an API from before reservations.
+        return (f"{_target('API')} does not take reservations yet, so a phone cannot be reserved, "
+                "listed or cancelled through it. Nothing was changed.")
     if e.code == "plan_unavailable":
         return f"{said} Choose another --type or --plan."
     if e.code == "idempotency_conflict":
         return ("That --idempotency-key was already used for a different request. Leave it out to "
                 "start a new reservation, or repeat the options it was first used with.")
     if e.code == "rate_limited":
-        return f"{said} `phone-harness cloud reservations` lists the unfinished ones."
+        return (f"{said} Cancelling one does not free a place; paying for one does. "
+                "`phone-harness cloud reservations` lists the unfinished ones.")
     if e.code == "payments_unavailable":
         return (f"{said} Nothing {'changed' if rid else 'was charged'}."
                 + (f" To retry safely, {retry}." if retry else ""))
@@ -2029,6 +2034,22 @@ def _explain_reservation(e, rid=None, retry=None):
     if e.status in (400, 403, 409, 429):
         return said
     return f"{said} (HTTP {e.status})"
+
+
+def _reservations_live():
+    """Whether this API has reservation routes at all.
+
+    A 404 for one reservation does not say. An API from before reservations
+    answers 404 for every path under /reservations, and "no reservation of
+    yours has that id" would be the wrong thing to tell someone then. The
+    list is the one route with no id in it, so it is asked once."""
+    try:
+        _api("GET", "/reservations")
+    except CloudError as e:
+        return e.status != 404
+    except OSError:
+        pass                    # cannot tell; the first answer stands
+    return True
 
 
 def _reservation_api(method, path, rid=None, **kw):
@@ -2090,11 +2111,7 @@ def _reserve(args):
             # key and body is the same reservation, never a second one.
             made = _api("POST", "/reservations", body, headers=headers, timeout=RESERVE_TIMEOUT)
     except CloudError as e:
-        text = _explain_reservation(e, retry=again)
-        if e.status == 400 and not e.code and "name" in str(e).lower() and not (first and last):
-            text += ("\nThis account has no name on file. Add --first-name NAME --last-name NAME "
-                     "and run it again.")
-        sys.exit(text)
+        sys.exit(_explain_reservation(e, retry=again))
     except OSError as e:
         sys.exit(f"Could not reach {_target('API')}: {e}\nThe request may still have arrived. "
                  f"To continue it instead of starting a second reservation, {again}.")
@@ -2262,13 +2279,15 @@ CLI_USAGE = """Usage:
   phone-harness cloud keys [create [LABEL] | revoke HASH]   API keys, for CI
   phone-harness cloud history [-n NUM] [--json]
   phone-harness cloud reserve --type iphone|iphone-esim|android --plan monthly|annual
-                              [--qty N] --use-case TEXT [--first-name NAME --last-name NAME]
+                              [--qty N] --use-case TEXT [--first-name NAME] [--last-name NAME]
                               [--open] [--json] [--idempotency-key KEY]
                                                ask for cloud phones (--qty 1 to 50, default 1) before the
                                                account has them. Prints the quote and a Stripe Checkout
                                                link for the refundable deposit; a person pays it in a
                                                browser, and nothing is held until then. --open opens
-                                               the link. The name is needed when the account has none
+                                               the link. The names go on the reservation in place of
+                                               the account's. Five unpaid reservations an hour for one
+                                               account; cancelling one does not free a place
   phone-harness cloud reservations [ID] [--json]
                                                the account's reservations: status, place in the queue,
                                                deposit, when it was paid. ID or a unique prefix shows one
@@ -2401,8 +2420,8 @@ def _cloud_parsers():
                          help=f"how many phones, 1 to {RESERVE_MAX_QUANTITY} (default 1)")
     reserve.add_argument("--use-case", metavar="TEXT", help="what the phones are for, in a sentence")
     reserve.add_argument("--first-name", metavar="NAME",
-                         help="who is reserving; needed when the account has no name on file")
-    reserve.add_argument("--last-name", metavar="NAME", help="goes with --first-name")
+                         help="the name to put on the reservation, in place of the account's")
+    reserve.add_argument("--last-name", metavar="NAME", help="likewise")
     reserve.add_argument("--open", action="store_true", help="open the Checkout link in the browser")
     reserve.add_argument("--json", action="store_true", help="print the reservation as JSON")
     reserve.add_argument("--idempotency-key", metavar="KEY",
