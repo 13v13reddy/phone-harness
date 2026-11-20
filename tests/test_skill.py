@@ -68,6 +68,25 @@ class SkillOutput(unittest.TestCase):
         self.assertIn("`screen_info()`", text)
         self.assertNotIn("ocr()", text)
 
+    def test_skill_says_how_reserving_a_phone_works(self):
+        """What an agent has to get right before it reserves or cancels for someone."""
+        section = _skill_text().split("\n## Reserving a cloud phone\n", 1)[1].split("\n## ", 1)[0]
+        text = " ".join(section.split())
+        for rule in (
+                "**Signed in first.**", "phone-harness cloud login", "PHONE_HARNESS_API_KEY",
+                "phone-harness.com/get-a-phone",                       # with no account: the website
+                "$20 per phone refundable deposit", "quote the command prints is authoritative",
+                "do not quote them from memory",
+                "**You never pay.**", "**Nothing is held until the deposit is paid.**",
+                "**Queue order is paid time.**", "does not move one up",
+                "one phone at the intro price when this customer has not had it yet, the rest at the standard price",
+                "The refund is automatic, to the card that paid",
+                "part handed over refunds only the phones still waiting",
+                "became a credit on the first bill and is no longer refundable",
+                "**The website has no list.**", "`cloud reservations` is the list",
+                "Cancelling one does not free a place"):
+            self.assertIn(rule, text)
+
     def test_screenshot_prints_the_path_it_returns(self):
         import contextlib
 

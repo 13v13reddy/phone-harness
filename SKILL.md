@@ -381,6 +381,9 @@ phone-harness cloud reservations ID            # one in full; an unpaid one show
 phone-harness cloud reservations cancel ID     # says what it would refund; --yes does it
 ```
 
+- **Signed in first.** These commands need `phone-harness cloud login`, or
+  `PHONE_HARNESS_API_KEY`. A user with no account, or who will not sign in,
+  can reserve on the website instead: phone-harness.com/get-a-phone.
 - **Ask first, and send the user's own answers.** `--type` is `iphone`,
   `iphone-esim` (a real number) or `android`. `--plan` is `monthly` or
   `annual`. `--qty` is 1 to 50, default 1. `--use-case` is what they want the
@@ -394,6 +397,8 @@ phone-harness cloud reservations cancel ID     # says what it would refund; --ye
   has a `position`. Do not tell the user a phone is reserved until
   `cloud reservations` says `queued`. The link stops working after about a
   day; reserve again for a new one.
+- **Queue order is paid time.** Places go in the order the deposits were
+  paid. Reserving again, or paying more, does not move one up.
 - **Read the quote as it is printed.** It is the deposit due now, refundable
   in full while the reservation is queued, and the plan's first billing
   period: one phone at the intro price when this customer has not had it
@@ -405,9 +410,14 @@ phone-harness cloud reservations cancel ID     # says what it would refund; --ye
   them only when the user gives you one.
 - **Cancel only when the user asks.** `cloud reservations cancel ID` with no
   `--yes` prints what would be given up and refunded, and changes nothing.
-  Show the user that, then run it again with `--yes`. A queued reservation is
-  refunded in full. Once every phone has been handed over the cancel is
-  refused (`already_granted`): that deposit went onto the first bill.
+  Show the user that, then run it again with `--yes`. The refund is
+  automatic, to the card that paid: there is nothing to request. A queued
+  reservation is refunded in full; one that is part handed over refunds only
+  the phones still waiting. Once every phone has been handed over the cancel
+  is refused (`already_granted`): that deposit became a credit on the first
+  bill and is no longer refundable.
+- **The website has no list.** `cloud reservations` is the list. The website
+  shows one reservation's status page, from its link.
 - **Retrying.** A `cloud reserve` that failed part way prints an
   `--idempotency-key`. Run the same command again with it to continue that
   reservation, not start a second one.

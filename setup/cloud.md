@@ -68,8 +68,17 @@ reserved. The plan starts when a phone is handed over, and the deposit comes
 off its first bill. The reservation carries the account's name;
 `--first-name` and `--last-name` put another one on it.
 
-An account can have five unpaid reservations an hour. Cancelling one does not
-free a place; paying for one does.
+- These commands need a signed-in account (`cloud login`, or
+  `PHONE_HARNESS_API_KEY`). Without one, reserve at phone-harness.com/get-a-phone.
+- The queue is in the order deposits were paid. Nothing moves a place up.
+- Cancelling refunds the deposit still held automatically, to the card that
+  paid; a reservation that is part handed over refunds only the phones still
+  waiting, and a phone that was handed over has had its deposit credited to
+  its first bill.
+- The website has no list of reservations: `cloud reservations` is the list,
+  and the website shows one reservation's status page from its link.
+- An account can have five unpaid reservations an hour. Cancelling one does not
+  free a place; paying for one does.
 
 Never pay, or fill in a payment page, for the user. Cancel a reservation only
 when they ask.
