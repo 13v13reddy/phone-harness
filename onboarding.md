@@ -91,6 +91,11 @@ in the summary and move on. If yes:
   stop`. Keep it to a few minutes: a cloud Android bills by the minute and the
   credit is theirs. (A cloud iPhone is a flat subscription: it does not bill by
   the minute.)
+- A user who wants a cloud iPhone and has none on the account (`phone-harness
+  cloud ls` lists no iOS phone) reserves one: ask which phone, which plan, how
+  many, and what it is for, then `phone-harness cloud reserve ...`. It prints
+  a quote and a Stripe Checkout link for a refundable deposit. Hand them the
+  link and stop: paying is theirs, like signing up.
 
 ## Rules
 

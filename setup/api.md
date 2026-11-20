@@ -34,6 +34,20 @@ curl -s -H "$C" -H 'Content-Type: application/json' \
   -d '{"op":"nav.home","kw":{}}' $CONTROL_URL/op      # Home Screen
 ```
 
+Reserve a phone the account does not have yet. The answer carries `quote` and
+`checkout_url`, a Stripe Checkout page where a person pays the refundable
+deposit; nothing is reserved until that is paid (`status` goes from
+`pending_payment` to `queued`). Never pay it for the user.
+
+```bash
+curl -s -H "$AUTH" -H 'Content-Type: application/json' -H "Idempotency-Key: $(uuidgen)" \
+  -d '{"phone_type":"iphone","plan":"monthly","quantity":1,"use_case":"What it is for","first_name":"NAME","last_name":"NAME"}' \
+  $API/reservations                               # phone_type: iphone | iphone_esim | android
+curl -s -H "$AUTH" $API/reservations              # the account's reservations
+curl -s -H "$AUTH" $API/reservations/ID           # one: status, position, deposit
+curl -s -H "$AUTH" -X POST $API/reservations/ID/cancel   # leave the queue; refunds what is held
+```
+
 `GET /me` lists each phone's `id` under `available`. Each `/op` answers `{"result": ...}`. A cloud Android is reached over adb
 instead (`POST /sessions/SID/adb` returns host, port and unlock code), so it
 needs adb and the CLI is the easier path.

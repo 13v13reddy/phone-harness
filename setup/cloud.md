@@ -46,3 +46,26 @@ billed annually ($768 or $960 a year). It does not bill by the minute, so it
 can stay running.
 A cloud iPhone is a separate phone from the user's own, with its own apps
 and logins; if an app asks for an Apple ID or any sign-in, ask the user.
+
+## Reserve a phone
+
+An account with no cloud iPhone yet, or one that needs more phones, reserves
+them:
+
+```bash
+phone-harness cloud reserve --type iphone --plan monthly --qty 2 \
+  --use-case "What the phones are for" --first-name NAME --last-name NAME
+phone-harness cloud reservations              # status and place in the queue
+phone-harness cloud reservations cancel ID    # leave the queue; the deposit is refunded
+```
+
+`--type` is `iphone`, `iphone-esim` or `android`; `--plan` is `monthly` or
+`annual`; `--qty` is 1 to 50. The command prints a quote and a Stripe Checkout
+link for a refundable deposit on each phone. The user opens the link and pays
+(`--open` opens it for them). That payment is what holds a place in the
+queue: until it is made, nothing is reserved. The plan starts when a phone is
+handed over, and the deposit comes off its first bill. `--first-name` and
+`--last-name` are needed when the account has no name on file.
+
+Never pay, or fill in a payment page, for the user. Cancel a reservation only
+when they ask.
